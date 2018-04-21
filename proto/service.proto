@@ -1,0 +1,13 @@
+syntax = "proto3";
+
+package pricing;
+
+message ItemPrice {
+    int32 itemId = 1;
+    float min = 2;
+    float max = 3;
+    float avg = 4;
+    float percentile = 5;
+    float stdev = 6;
+}
+
