@@ -2,12 +2,30 @@ syntax = "proto3";
 
 package pricing;
 
+service Prices {
+    rpc GetItemPrice (ItemPriceRequest) returns (ItemPriceResponse);
+}
+
+message ItemPriceRequest {
+    int32 RegionId = 1;
+    int32 ItemId = 2;
+}
+
+message ItemPriceResponse {
+    Item Item = 1;
+}
+
+message Item {
+    int32 ItemId = 1;
+    ItemPrice Buy = 2;
+    ItemPrice Sell = 3;
+}
+
 message ItemPrice {
-    int32 itemId = 1;
-    float min = 2;
-    float max = 3;
-    float avg = 4;
-    float percentile = 5;
-    float stdev = 6;
+    float Min = 1;
+    float Max = 2;
+    float Avg = 3;
+    float Vol = 4;
+    int64 Ord = 5;
 }
 

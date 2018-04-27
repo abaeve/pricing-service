@@ -137,6 +137,9 @@ func (sub *orderSubscriber) orderPublication(p broker.Publication) error {
 	//It's implementation will grab all orders for this region that don't have this FetchRequestId
 	//and deletes them adjusting the sub's averages accordingly
 	//cleanupOldOrders(op.FetchRequestId)
+	//delete where (after waiting for a second):
+	//{$and: [{fetch_request_id: { $ne: "6b861554-99c8-4918-86a7-a90aa9346dd8"}}, {region_id: 10000002 }]}
+	//                                   ^     Current Regions Request Id   ^
 
 	return nil
 }
@@ -146,7 +149,7 @@ func (sub *orderSubscriber) beginPublication(p broker.Publication) error {
 }
 
 func (sub *orderSubscriber) endPublication(p broker.Publication) error {
-
+	fmt.Printf("FetchRequestId: %s", string(p.Message().Body))
 	return nil
 }
 
