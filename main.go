@@ -23,6 +23,9 @@ func main() {
 	sub := subscriber.NewOrderSubscriber(session)
 	sub.Init()
 	sub.Subscribe(10000002)
+	sub.Subscribe(10000043)
+	sub.Subscribe(10000032)
+	sub.Subscribe(10000030)
 
 	fmt.Println("Waiting...")
 

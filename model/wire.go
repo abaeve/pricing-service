@@ -19,3 +19,18 @@ type OrderPayload struct {
 	Issued       time.Time `json:"issued,omitempty" bson:"issued"`               /* issued string */
 	Range_       string    `json:"range,omitempty" bson:"range"`                 /* range string */
 }
+
+type TypeStat struct {
+	RegionId int32 `bson:"region_id"`
+	TypeId   int32 `bson:"type_id"`
+	Buy      Stat  `bson:"buy"`
+	Sell     Stat  `bson:"sell"`
+}
+
+type Stat struct {
+	Min float64 `bson:"min"`
+	Avg float64 `bson:"avg"`
+	Max float64 `bson:"max"`
+	Vol int64   `bson:"vol"`
+	Ord int64   `bson:"ord"`
+}
