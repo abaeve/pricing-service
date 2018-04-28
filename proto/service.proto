@@ -22,10 +22,10 @@ message Item {
 }
 
 message ItemPrice {
-    float Min = 1;
-    float Max = 2;
-    float Avg = 3;
-    float Vol = 4;
+    double Min = 1;
+    double Max = 2;
+    double Avg = 3;
+    int64 Vol = 4;
     int64 Ord = 5;
 }
 

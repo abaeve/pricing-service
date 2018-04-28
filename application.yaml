@@ -1,0 +1,7 @@
+namespace: com.abaeve
+registry:
+  hostname: localhost
+  port: 8500
+extensions:
+  mongodb:
+    dial: localhost

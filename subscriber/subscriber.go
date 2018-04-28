@@ -23,22 +23,11 @@ type OrderSubscriber interface {
 	Init()
 }
 
-type StatisticsProvider interface {
-	Stats(regionId, typeId int32) *model.TypeStat
-}
-
-//20 regions at ~50,000 items equates to ~83m of memory required... not too shabby
-type itemStat struct {
-	itemId, readings int32
-	min, max, avg    float64
-	ord, vol         int64
-}
-
 type stats struct {
 	region map[int32] /*regionId*/ map[int32] /*typeId*/ *model.TypeStat
 }
 
-type orderSubscriber struct {
+type OrderSubImpl struct {
 	s           *mgo.Session
 	persistChan chan int32
 
@@ -59,16 +48,9 @@ type orderSubscriber struct {
 //   2. buy.regionId listener
 //   3. sell.regionId listener
 //   4. regionId.state.end listener
-func (sub *orderSubscriber) Subscribe(regionId int32) {
+func (sub *OrderSubImpl) Subscribe(regionId int32) {
 	log, err := zap.NewProduction()
 	slog := log.Sugar()
-
-	if err = broker.Init(); err != nil {
-		slog.Fatalf("Broker Init error: %v", err)
-	}
-	if err := broker.Connect(); err != nil {
-		slog.Fatalf("Broker Connect error: %v", err)
-	}
 
 	_, err = broker.Subscribe("buy."+strconv.Itoa(int(regionId)), func(p broker.Publication) error {
 		return sub.orderPublication(p)
@@ -92,7 +74,7 @@ func (sub *orderSubscriber) Subscribe(regionId int32) {
 	}
 }
 
-func (sub *orderSubscriber) Init() {
+func (sub *OrderSubImpl) Init() {
 	session := sub.s.Copy()
 	defer session.Close()
 
@@ -127,30 +109,29 @@ func (sub *orderSubscriber) Init() {
 	go sub.persister()
 }
 
-func (sub *orderSubscriber) Stats(regionId, typeId int32) *model.TypeStat {
-	sub.statMu.Lock()
-	result := &model.TypeStat{
-		RegionId: regionId,
-		TypeId:   typeId,
+func (sub *OrderSubImpl) Stats(regionId, typeId int32) *model.TypeStat {
+	fmt.Printf("RegionId: %d, TypeId: %d\n", regionId, typeId)
+	fmt.Println(strconv.Itoa(int(regionId)) + "-" + strconv.Itoa(int(typeId)))
+	result := model.TypeStat{}
+
+	session := sub.s.Copy()
+	defer session.Close()
+
+	c := session.DB("market").C("stats")
+
+	query := c.Find(bson.M{"_id": strconv.Itoa(int(regionId)) + "-" + strconv.Itoa(int(typeId))}).Iter()
+
+	if ok := query.Next(&result); !ok {
+		fmt.Printf("%v", result)
+		if err := query.Err(); err != nil {
+			fmt.Errorf("errored fetching stats for region %d typeid %d with message %s", regionId, typeId, err.Error())
+		}
 	}
 
-	result.Buy.Min = sub.stats.region[regionId][typeId].Buy.Min
-	result.Buy.Avg = sub.stats.region[regionId][typeId].Buy.Avg
-	result.Buy.Max = sub.stats.region[regionId][typeId].Buy.Max
-	result.Buy.Ord = sub.stats.region[regionId][typeId].Buy.Ord
-	result.Buy.Vol = sub.stats.region[regionId][typeId].Buy.Vol
-
-	result.Sell.Min = sub.stats.region[regionId][typeId].Sell.Min
-	result.Sell.Avg = sub.stats.region[regionId][typeId].Sell.Avg
-	result.Sell.Max = sub.stats.region[regionId][typeId].Sell.Max
-	result.Sell.Ord = sub.stats.region[regionId][typeId].Sell.Ord
-	result.Sell.Vol = sub.stats.region[regionId][typeId].Sell.Vol
-
-	sub.statMu.Unlock()
-	return result
+	return &result
 }
 
-func (sub *orderSubscriber) orderPublication(p broker.Publication) error {
+func (sub *OrderSubImpl) orderPublication(p broker.Publication) error {
 	op := &model.OrderPayload{}
 
 	err := json.Unmarshal(p.Message().Body, op)
@@ -239,7 +220,8 @@ func (sub *orderSubscriber) orderPublication(p broker.Publication) error {
 	return nil
 }
 
-func (sub *orderSubscriber) beginPublication(regionId int32, p broker.Publication) error {
+func (sub *OrderSubImpl) beginPublication(regionId int32, p broker.Publication) error {
+	fmt.Printf("%s BGN FetchRequestId: %s\n", time.Now().Format("2006-01-02T15:04:05.999999-07:00"), string(p.Message().Body))
 	go func(regionId int32, fetchRequestId string) {
 		sub.statMu.Lock()
 
@@ -248,8 +230,8 @@ func (sub *orderSubscriber) beginPublication(regionId int32, p broker.Publicatio
 	return nil
 }
 
-func (sub *orderSubscriber) endPublication(regionId int32, p broker.Publication) error {
-	//fmt.Printf("FetchRequestId: %s\n", string(p.Message().Body))
+func (sub *OrderSubImpl) endPublication(regionId int32, p broker.Publication) error {
+	fmt.Printf("%s END FetchRequestId: %s\n", time.Now().Format("2006-01-02T15:04:05.999999-07:00"), string(p.Message().Body))
 	fetchRequestId := string(p.Message().Body)
 
 	time.Sleep(time.Second * 3)
@@ -317,7 +299,7 @@ func (sub *orderSubscriber) endPublication(regionId int32, p broker.Publication)
 	return nil
 }
 
-func (sub *orderSubscriber) persister() {
+func (sub *OrderSubImpl) persister() {
 	for {
 		select {
 		case regionId := <-sub.persistChan:
@@ -342,7 +324,7 @@ func (sub *orderSubscriber) persister() {
 	}
 }
 
-func (sub *orderSubscriber) cleanupStats(regionId int32, fetchRequestId string) {
+func (sub *OrderSubImpl) cleanupStats(regionId int32, fetchRequestId string) {
 	sub.statMu.Lock()
 	sub.stats.region[regionId] = nil
 	sub.statMu.Unlock()
@@ -395,7 +377,7 @@ func (sub *orderSubscriber) cleanupStats(regionId int32, fetchRequestId string) 
 	//}
 }
 
-func (sub *orderSubscriber) cleanupForFetchRequestId(regionId int32, fetchRequestId string) {
+func (sub *OrderSubImpl) cleanupForFetchRequestId(regionId int32, fetchRequestId string) {
 	session := sub.s.Copy()
 	defer session.Close()
 
@@ -411,8 +393,8 @@ func (sub *orderSubscriber) cleanupForFetchRequestId(regionId int32, fetchReques
 	}
 }
 
-func NewOrderSubscriber(sess *mgo.Session) OrderSubscriber {
-	result := &orderSubscriber{
+func NewOrderSubscriber(sess *mgo.Session) *OrderSubImpl {
+	result := &OrderSubImpl{
 		s:           sess,
 		persistChan: make(chan int32),
 		bulkS:       make(map[int32]*mgo.Session),
