@@ -18,6 +18,24 @@ import (
 	"time"
 )
 
+const (
+	THE_FORGE   = 10000002
+	JITA        = 30000142 //60003760
+	DOMAIN_R    = 10000043
+	AMARR       = 30002187 //60008494
+	HEIMATER    = 10000030
+	RENS        = 30002510 //60004588
+	SINQ_LAISON = 10000032
+	DODIXIE     = 30002659 //60011866
+)
+
+var HUB_MAP = map[int32]int32{
+	THE_FORGE:   JITA,
+	DOMAIN_R:    AMARR,
+	HEIMATER:    RENS,
+	SINQ_LAISON: DODIXIE,
+}
+
 type OrderSubscriber interface {
 	Subscribe(regionId int32)
 	Init()
@@ -110,8 +128,8 @@ func (sub *OrderSubImpl) Init() {
 }
 
 func (sub *OrderSubImpl) Stats(regionId, typeId int32) *model.TypeStat {
-	fmt.Printf("RegionId: %d, TypeId: %d\n", regionId, typeId)
-	fmt.Println(strconv.Itoa(int(regionId)) + "-" + strconv.Itoa(int(typeId)))
+	//fmt.Printf("RegionId: %d, TypeId: %d\n", regionId, typeId)
+	//fmt.Println(strconv.Itoa(int(regionId)) + "-" + strconv.Itoa(int(typeId)))
 	result := model.TypeStat{}
 
 	session := sub.s.Copy()
@@ -122,7 +140,7 @@ func (sub *OrderSubImpl) Stats(regionId, typeId int32) *model.TypeStat {
 	query := c.Find(bson.M{"_id": strconv.Itoa(int(regionId)) + "-" + strconv.Itoa(int(typeId))}).Iter()
 
 	if ok := query.Next(&result); !ok {
-		fmt.Printf("%v", result)
+		//fmt.Printf("%v", result)
 		if err := query.Err(); err != nil {
 			fmt.Errorf("errored fetching stats for region %d typeid %d with message %s", regionId, typeId, err.Error())
 		}
@@ -150,54 +168,57 @@ func (sub *OrderSubImpl) orderPublication(p broker.Publication) error {
 
 	sub.statMu.Lock()
 	//fmt.Print(".")
-	if sub.stats.region[op.RegionId] == nil {
-		//fmt.Print("!")
-		sub.stats.region[op.RegionId] = make(map[int32]*model.TypeStat)
-	}
-
-	if sub.stats.region[op.RegionId] == nil {
-		//fmt.Print("@")
-		sub.stats.region[op.RegionId] = make(map[int32]*model.TypeStat)
-	}
-
-	if sub.stats.region[op.RegionId][op.TypeId] == nil {
-		//fmt.Print("#")
-		sub.stats.region[op.RegionId][op.TypeId] = &model.TypeStat{
-			RegionId: op.RegionId,
-			TypeId:   op.TypeId,
+	//Only generate stats if we've mapped a hub station to the region
+	if HUB_MAP[op.RegionId] != 0 && HUB_MAP[op.RegionId] == op.SystemId {
+		if sub.stats.region[op.RegionId] == nil {
+			//fmt.Print("!")
+			sub.stats.region[op.RegionId] = make(map[int32]*model.TypeStat)
 		}
 
-		sub.stats.region[op.RegionId][op.TypeId].Buy.Min = math.MaxFloat64
-		sub.stats.region[op.RegionId][op.TypeId].Sell.Min = math.MaxFloat64
-	}
-	//fmt.Print("\n")
-
-	if op.IsBuyOrder {
-		if op.Price < sub.stats.region[op.RegionId][op.TypeId].Buy.Min {
-			sub.stats.region[op.RegionId][op.TypeId].Buy.Min = op.Price
+		if sub.stats.region[op.RegionId] == nil {
+			//fmt.Print("@")
+			sub.stats.region[op.RegionId] = make(map[int32]*model.TypeStat)
 		}
 
-		if op.Price > sub.stats.region[op.RegionId][op.TypeId].Buy.Max {
-			sub.stats.region[op.RegionId][op.TypeId].Buy.Max = op.Price
-		}
+		if sub.stats.region[op.RegionId][op.TypeId] == nil {
+			//fmt.Print("#")
+			sub.stats.region[op.RegionId][op.TypeId] = &model.TypeStat{
+				RegionId: op.RegionId,
+				TypeId:   op.TypeId,
+			}
 
-		oldAvgDividend := sub.stats.region[op.RegionId][op.TypeId].Buy.Avg * float64(sub.stats.region[op.RegionId][op.TypeId].Buy.Ord)
-		sub.stats.region[op.RegionId][op.TypeId].Buy.Ord += 1
-		sub.stats.region[op.RegionId][op.TypeId].Buy.Vol += int64(op.VolumeRemain)
-		sub.stats.region[op.RegionId][op.TypeId].Buy.Avg = (op.Price + oldAvgDividend) / float64(sub.stats.region[op.RegionId][op.TypeId].Buy.Ord)
-	} else {
-		if op.Price < sub.stats.region[op.RegionId][op.TypeId].Sell.Min {
-			sub.stats.region[op.RegionId][op.TypeId].Sell.Min = op.Price
+			sub.stats.region[op.RegionId][op.TypeId].Buy.Min = math.MaxFloat64
+			sub.stats.region[op.RegionId][op.TypeId].Sell.Min = math.MaxFloat64
 		}
+		//fmt.Print("\n")
 
-		if op.Price > sub.stats.region[op.RegionId][op.TypeId].Sell.Max {
-			sub.stats.region[op.RegionId][op.TypeId].Sell.Max = op.Price
+		if op.IsBuyOrder {
+			if op.Price < sub.stats.region[op.RegionId][op.TypeId].Buy.Min {
+				sub.stats.region[op.RegionId][op.TypeId].Buy.Min = op.Price
+			}
+
+			if op.Price > sub.stats.region[op.RegionId][op.TypeId].Buy.Max {
+				sub.stats.region[op.RegionId][op.TypeId].Buy.Max = op.Price
+			}
+
+			oldAvgDividend := sub.stats.region[op.RegionId][op.TypeId].Buy.Avg * float64(sub.stats.region[op.RegionId][op.TypeId].Buy.Ord)
+			sub.stats.region[op.RegionId][op.TypeId].Buy.Ord += 1
+			sub.stats.region[op.RegionId][op.TypeId].Buy.Vol += int64(op.VolumeRemain)
+			sub.stats.region[op.RegionId][op.TypeId].Buy.Avg = (op.Price + oldAvgDividend) / float64(sub.stats.region[op.RegionId][op.TypeId].Buy.Ord)
+		} else {
+			if op.Price < sub.stats.region[op.RegionId][op.TypeId].Sell.Min {
+				sub.stats.region[op.RegionId][op.TypeId].Sell.Min = op.Price
+			}
+
+			if op.Price > sub.stats.region[op.RegionId][op.TypeId].Sell.Max {
+				sub.stats.region[op.RegionId][op.TypeId].Sell.Max = op.Price
+			}
+
+			oldAvgDividend := sub.stats.region[op.RegionId][op.TypeId].Sell.Avg * float64(sub.stats.region[op.RegionId][op.TypeId].Sell.Ord)
+			sub.stats.region[op.RegionId][op.TypeId].Sell.Ord += 1
+			sub.stats.region[op.RegionId][op.TypeId].Sell.Vol += int64(op.VolumeRemain)
+			sub.stats.region[op.RegionId][op.TypeId].Sell.Avg = (op.Price + oldAvgDividend) / float64(sub.stats.region[op.RegionId][op.TypeId].Sell.Ord)
 		}
-
-		oldAvgDividend := sub.stats.region[op.RegionId][op.TypeId].Sell.Avg * float64(sub.stats.region[op.RegionId][op.TypeId].Sell.Ord)
-		sub.stats.region[op.RegionId][op.TypeId].Sell.Ord += 1
-		sub.stats.region[op.RegionId][op.TypeId].Sell.Vol += int64(op.VolumeRemain)
-		sub.stats.region[op.RegionId][op.TypeId].Sell.Avg = (op.Price + oldAvgDividend) / float64(sub.stats.region[op.RegionId][op.TypeId].Sell.Ord)
 	}
 	sub.statMu.Unlock()
 
@@ -221,7 +242,7 @@ func (sub *OrderSubImpl) orderPublication(p broker.Publication) error {
 }
 
 func (sub *OrderSubImpl) beginPublication(regionId int32, p broker.Publication) error {
-	fmt.Printf("%s BGN FetchRequestId: %s\n", time.Now().Format("2006-01-02T15:04:05.999999-07:00"), string(p.Message().Body))
+	//fmt.Printf("%s BGN FetchRequestId: %s\n", time.Now().Format("2006-01-02T15:04:05.999999-07:00"), string(p.Message().Body))
 	go func(regionId int32, fetchRequestId string) {
 		sub.statMu.Lock()
 
@@ -231,7 +252,7 @@ func (sub *OrderSubImpl) beginPublication(regionId int32, p broker.Publication) 
 }
 
 func (sub *OrderSubImpl) endPublication(regionId int32, p broker.Publication) error {
-	fmt.Printf("%s END FetchRequestId: %s\n", time.Now().Format("2006-01-02T15:04:05.999999-07:00"), string(p.Message().Body))
+	//fmt.Printf("%s END FetchRequestId: %s\n", time.Now().Format("2006-01-02T15:04:05.999999-07:00"), string(p.Message().Body))
 	fetchRequestId := string(p.Message().Body)
 
 	time.Sleep(time.Second * 3)
@@ -383,14 +404,14 @@ func (sub *OrderSubImpl) cleanupForFetchRequestId(regionId int32, fetchRequestId
 
 	c := session.DB("market").C("orders")
 
-	info, err := c.RemoveAll(bson.M{"region_id": regionId, "fetch_request_id": bson.M{"$ne": fetchRequestId}})
+	_ /*info*/, err := c.RemoveAll(bson.M{"region_id": regionId, "fetch_request_id": bson.M{"$ne": fetchRequestId}})
 	if err != nil {
 		fmt.Errorf("errored out with: %s\n", err.Error())
 	}
 
-	if info != nil {
-		fmt.Printf("Removed: %d for region: %d, and request_id: %s\n", info.Removed, regionId, fetchRequestId)
-	}
+	//if info != nil {
+	//	fmt.Printf("Removed: %d for region: %d, and request_id: %s\n", info.Removed, regionId, fetchRequestId)
+	//}
 }
 
 func NewOrderSubscriber(sess *mgo.Session) *OrderSubImpl {
