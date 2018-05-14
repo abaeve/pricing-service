@@ -18,3 +18,8 @@ No history is stored here although there are plans to publish the changes which 
    * It could be made more aware of it's existence and pricing-fetcher could become a more robust service
      with endpoints to control what IT monitors on it's poll executions
    * This would allow for easier fine tuning of network and cpu usage
+
+## Future roadmap
+
+ * Remove mongo because it's map reduce is garbage for what I need
+   * Switch the storage mechanism to something completely different and use [Gleam](https://github.com/chrislusf/gleam) couple with [SeaweedFS](https://github.com/chrislusf/seaweedfs)?
